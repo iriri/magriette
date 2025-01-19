@@ -1,0 +1,9 @@
+array_width = 80
+attr_fn_like_width = 80
+chain_width = 80
+fn_call_width = 80
+match_block_trailing_comma = true
+struct_lit_width = 80
+struct_variant_width = 80
+tab_spaces = 3
+use_field_init_shorthand = true
