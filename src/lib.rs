@@ -1,3 +1,16 @@
+/// # Examples
+/// ```
+/// use magriette::pipe;
+///
+/// fn dederef(x: &&u32) -> u32 {
+///    **x
+/// }
+///
+/// fn lol(xs: &[u32], ys: &[usize]) -> Option<u32> {
+///    // An even worse way of writing `Some(dederef(&xs.get(*ys.get(123)?)?))`
+///    pipe!(ys -> .get(123)? -> *xs.get? -> &dederef -> Some)
+/// }
+/// ```
 #[macro_export]
 macro_rules! pipe {
    (@finish $x:expr, .await $($xs:tt)*) => {
@@ -15,17 +28,23 @@ macro_rules! pipe {
    (@call ($x:expr), [$($f:tt)+], ::$f1:ident $($xs:tt)*) => {
       pipe!(@call ($x), [$($f)+::$f1], $($xs)*)
    };
+   (@call ($x:expr), [$($f:tt)+], ::<$($t:ty),+> $($xs:tt)*) => {
+      pipe!(@call ($x), [$($f)+::<$($t)+>], $($xs)*)
+   };
    (@call ($($x:expr),+), [$($f:tt)+], ($($y:expr),+) $($xs:tt)*) => {
       pipe!(@call ($($y,)+ $($x),+), [$($f)+], $($xs)*)
    };
    (@call ($($x:expr),+), [$($f:tt)+], $($xs:tt)*) => {
       pipe!(@finish $($f)+($($x),+), $($xs)*)
    };
-   (@method $x:expr, $f:ident($($y:expr),*), ($($z:expr),+) $($xs:tt)*) => {
-      pipe!(@method $x, $f($($y,)* $($z),+), $($xs)*)
+   (@method $x:expr, [$($f:tt)+]($($y:expr),*), $($z:expr)?, ::<$($t:ty),+> $($xs:tt)*) => {
+      pipe!(@method $x, [$($f)+::<$($t),+>]($($y,)*), $($z)?, $($xs)*)
    };
-   (@method $x:expr, $f:ident($($y:expr),*), $($xs:tt)*) => {
-      pipe!(@finish ($x).$f($($y),*), $($xs)*)
+   (@method $x:expr, [$($f:tt)+]($($y:expr),*), $($z:expr)?, ($($zz:expr),+) $($xs:tt)*) => {
+      pipe!(@method $x, [$($f)+]($($y,)* $($zz),+), $($z)?, $($xs)*)
+   };
+   (@method $x:expr, [$($f:tt)+]($($y:expr),*), $($z:expr)?, $($xs:tt)*) => {
+      pipe!(@finish ($x).$($f)+($($y,)*$($z)?), $($xs)*)
    };
    (@start $x:expr, [$($u:tt)*], &mut $($xs:tt)*) => {
       pipe!(@start $x, [$($u)* &mut], $($xs)*)
@@ -54,11 +73,14 @@ macro_rules! pipe {
    (@start $x:expr, [$($u:tt)*], if $t:block else $f:block $($xs:tt)*) => {
       pipe!(@finish if $($u)*($x) $t else $f, $($xs)*)
    };
+   (@start $x:expr, [$($u:tt)*], $y:tt.$f:ident $($xs:tt)*) => {
+      pipe!(@method $y, [$f](), $($u)*($x), $($xs)*)
+   };
    (@start $x:expr, [$($u:tt)*], $f:ident $($xs:tt)*) => {
       pipe!(@call ($($u)*($x)), [$f], $($xs)*)
    };
    (@start $x:expr, [$($u:tt)*], .$f:ident $($xs:tt)*) => {
-      pipe!(@method $($u)*($x), $f(), $($xs)*)
+      pipe!(@method $($u)*($x), [$f](), , $($xs)*)
    };
    (@start $x:expr, [$($u:tt)*], [.$($p:tt)+] $($xs:tt)*) => {
       pipe!(@finish ($($u)*($x)).$($p)+, $($xs)*)
@@ -122,7 +144,7 @@ mod tests {
       assert_eq!(&0, pipe!(0 -> & -> ident));
       assert_eq!(&0, pipe!(0 -> &ident));
       assert_eq!(&mut 0, pipe!(0 -> &mut -> foo::ident));
-      assert_eq!(&mut 0, pipe!(0 -> &mut foo::ident));
+      assert_eq!(&mut 0, pipe!(0 -> &mut foo::ident::<&mut u32>));
       assert_eq!(0, pipe!(0 -> & -> second(&1) -> *));
       assert_eq!(0, pipe!(0 -> &&second(&&1) -> **));
       assert_eq!(0, pipe!(0 -> &mut -> foo::third(&mut 1, &mut 2) -> *));
@@ -135,7 +157,7 @@ mod tests {
          assert_eq!(0, pipe!(Some(0) -> ? -> ident));
          assert_eq!(0, pipe!(Some(0) -> ?foo::ident));
          assert_eq!(0, pipe!(0 -> wrap -> ?));
-         assert_eq!(0, pipe!(0 -> wrap? -> ident));
+         assert_eq!(0, pipe!(0 -> wrap? -> ident::<_>));
          assert_eq!(0, pipe!(Some(0) -> bar::wrap? -> ?));
          pipe!(None::<()> -> bar::wrap??);
          unreachable!();
@@ -160,13 +182,26 @@ mod tests {
          fn add3(&mut self, b: u32, c: u32) -> U32 {
             U32(self.0 + b + c)
          }
+
+         fn add_assign(&mut self, b: u32) -> U32 {
+            self.0 += b;
+            U32(self.0)
+         }
+
+         fn konst<T>(&self, x: T) -> T {
+            x
+         }
       }
 
+      let mut x = U32(0);
       assert_eq!(U32(1), pipe!(U32(0) -> .incr));
       assert_eq!(U32(1), pipe!(U32(0) -> .add2(1)));
       assert_eq!(U32(2), pipe!(U32(0) -> &.add2(1) -> .incr));
       assert_eq!(U32(3), pipe!(U32(0) -> .add3(1, 2)));
       assert_eq!(U32(4), pipe!(U32(0) -> &mut .add3(1, 2) -> .incr));
+      assert_eq!(U32(5), pipe!(5 -> x.add_assign));
+      assert_eq!(U32(6), pipe!(0 -> x.add3(1)));
+      assert_eq!(U32(7), pipe!(U32(0) -> .konst::<_>(U32(7))));
    }
 
    #[test]
