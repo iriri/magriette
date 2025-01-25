@@ -1,16 +1,18 @@
-/// # Examples
-/// ```
-/// use magriette::pipe;
-///
-/// fn dederef(x: &&u32) -> u32 {
-///    **x
-/// }
-///
-/// fn lol(xs: &[u32], ys: &[usize]) -> Option<u32> {
-///    // An even worse way of writing `Some(dederef(&xs.get(*ys.get(123)?)?))`
-///    pipe!(ys -> .get(123)? -> *xs.get? -> &dederef -> Some)
-/// }
-/// ```
+//! # Examples
+//! ```
+//! # use magriette::pipe;
+//! #
+//! fn dederef(x: &&u32) -> u32 {
+//!    **x
+//! }
+//!
+//! fn lol(xs: &[u32], ys: &[usize]) -> Option<u32> {
+//!    // An even worse way of writing `Some(dederef(&xs.get(*ys.get(123)?)?))`
+//!    pipe!(ys -> .get(123)? -> *xs.get? -> &dederef -> Some)
+//! }
+//! ```
+#![no_std]
+
 #[macro_export]
 macro_rules! pipe {
    (@finish $x:expr, .await $($xs:tt)*) => {
@@ -22,14 +24,20 @@ macro_rules! pipe {
    (@finish $x:expr, -> $($xs:tt)+) => {
       $crate::pipe!(@start $x, [], $($xs)+)
    };
+   (@finish $x:expr, => $($xs:tt)+) => {
+      $crate::pipe!(@start2 $x, [], [], $($xs)+)
+   };
    (@finish $x:expr,) => {
       $x
    };
-   (@call ($x:expr), [$($f:tt)+], ::$f1:ident $($xs:tt)*) => {
-      $crate::pipe!(@call ($x), [$($f)+::$f1], $($xs)*)
+   (@call ($($x:expr),+), [$($f:tt)+], ::$f1:ident $($xs:tt)*) => {
+      $crate::pipe!(@call ($($x),+), [$($f)+::$f1], $($xs)*)
    };
-   (@call ($x:expr), [$($f:tt)+], ::<$($t:ty),+> $($xs:tt)*) => {
-      $crate::pipe!(@call ($x), [$($f)+::<$($t)+>], $($xs)*)
+   (@call ($($x:expr),+), [$($f:tt)+], ::<$($t:ty),+> $($xs:tt)*) => {
+      $crate::pipe!(@call ($($x),+), [$($f)+::<$($t)+>], $($xs)*)
+   };
+   (@call ($($x:expr),+), [$($f:tt)+], ! $($xs:tt)*) => {
+      $crate::pipe!(@call ($($x),+), [$($f)+!], $($xs)*)
    };
    (@call ($($x:expr),+), [$($f:tt)+], ($($y:expr),+) $($xs:tt)*) => {
       $crate::pipe!(@call ($($y,)+ $($x),+), [$($f)+], $($xs)*)
@@ -37,14 +45,14 @@ macro_rules! pipe {
    (@call ($($x:expr),+), [$($f:tt)+], $($xs:tt)*) => {
       $crate::pipe!(@finish $($f)+($($x),+), $($xs)*)
    };
-   (@method $x:expr, [$($f:tt)+]($($y:expr),*), $($z:expr)?, ::<$($t:ty),+> $($xs:tt)*) => {
-      $crate::pipe!(@method $x, [$($f)+::<$($t),+>]($($y,)*), $($z)?, $($xs)*)
+   (@method $x:expr, [$($f:tt)+]($($y:expr),*), [$($z:expr),*], ::<$($t:ty),+> $($xs:tt)*) => {
+      $crate::pipe!(@method $x, [$($f)+::<$($t),+>]($($y,)*), [$($z),*], $($xs)*)
    };
-   (@method $x:expr, [$($f:tt)+]($($y:expr),*), $($z:expr)?, ($($zz:expr),+) $($xs:tt)*) => {
-      $crate::pipe!(@method $x, [$($f)+]($($y,)* $($zz),+), $($z)?, $($xs)*)
+   (@method $x:expr, [$($f:tt)+]($($y:expr),*), [$($z:expr),*], ($($zz:expr),+) $($xs:tt)*) => {
+      $crate::pipe!(@method $x, [$($f)+]($($y,)* $($zz),+), [$($z),*], $($xs)*)
    };
-   (@method $x:expr, [$($f:tt)+]($($y:expr),*), $($z:expr)?, $($xs:tt)*) => {
-      $crate::pipe!(@finish ($x).$($f)+($($y,)*$($z)?), $($xs)*)
+   (@method $x:expr, [$($f:tt)+]($($y:expr),*), [$($z:expr),*], $($xs:tt)*) => {
+      $crate::pipe!(@finish ($x).$($f)+($($y,)*$($z),*), $($xs)*)
    };
    (@start $x:expr, [$($u:tt)*], &mut $($xs:tt)*) => {
       $crate::pipe!(@start $x, [$($u)* &mut], $($xs)*)
@@ -67,6 +75,9 @@ macro_rules! pipe {
    (@start $x:expr, [$($u:tt)*], -> $($xs:tt)+) => {
       $crate::pipe!(@start $($u)*($x), [], $($xs)+)
    };
+   (@start $x:expr, [$($u:tt)*], => $($xs:tt)+) => {
+      $crate::pipe!(@start2 $($u)*($x), [], [], $($xs)+)
+   };
    (@start $x:expr, [$($u:tt)*], match $c:tt $($xs:tt)*) => {
       $crate::pipe!(@finish match $($u)*($x) $c, $($xs)*)
    };
@@ -74,13 +85,13 @@ macro_rules! pipe {
       $crate::pipe!(@finish if $($u)*($x) $t else $f, $($xs)*)
    };
    (@start $x:expr, [$($u:tt)*], $y:tt.$f:ident $($xs:tt)*) => {
-      $crate::pipe!(@method $y, [$f](), $($u)*($x), $($xs)*)
+      $crate::pipe!(@method $y, [$f](), [$($u)*($x)], $($xs)*)
    };
    (@start $x:expr, [$($u:tt)*], $f:ident $($xs:tt)*) => {
       $crate::pipe!(@call ($($u)*($x)), [$f], $($xs)*)
    };
    (@start $x:expr, [$($u:tt)*], .$f:ident $($xs:tt)*) => {
-      $crate::pipe!(@method $($u)*($x), [$f](), , $($xs)*)
+      $crate::pipe!(@method $($u)*($x), [$f](), [], $($xs)*)
    };
    (@start $x:expr, [$($u:tt)*], [.$($p:tt)+] $($xs:tt)*) => {
       $crate::pipe!(@finish ($($u)*($x)).$($p)+, $($xs)*)
@@ -88,8 +99,14 @@ macro_rules! pipe {
    (@start $x:expr, [$($u:tt)*], [$i:expr] $($xs:tt)*) => {
       $crate::pipe!(@finish ($($u)*($x))[$i], $($xs)*)
    };
+   (@start $x:expr, [$($u:tt)*], _) => {{
+      let _ = $($u)*($x);
+   }};
    (@start $x:expr, [$($u:tt)*], |$y:pat_param| $e:block -> $($xs:tt)*) => {
       $crate::pipe!(@start (|$y| $e)($($u)*($x)), [], $($xs)*)
+   };
+   (@start $x:expr, [$($u:tt)*], |$y:pat_param| $e:block => $($xs:tt)*) => {
+      $crate::pipe!(@start2 (|$y| $e)($($u)*($x)), [], [], $($xs)*)
    };
    (@start $x:expr, [$($u:tt)*], |$y:pat_param| $e:block) => {
       (|$y| $e)($($u)*($x))
@@ -97,8 +114,84 @@ macro_rules! pipe {
    (@start $x:expr, [$($u:tt)*],) => {
       $($u)*($x)
    };
+   (@start2 $x:expr, [$($u:tt)*], [$($s:tt)*], &mut $($xs:tt)*) => {
+      $crate::pipe!(@start2 $x, [$($u)* &mut], [$($s)*], $($xs)*)
+   };
+   (@start2 $x:expr, [$($u:tt)*], [$($s:tt)*], && $($xs:tt)*) => {
+      $crate::pipe!(@start2 $x, [$($u)* &&], [$($s)*], $($xs)*)
+   };
+   (@start2 $x:expr, [$($u:tt)*], [$($s:tt)*], & $($xs:tt)*) => {
+      $crate::pipe!(@start2 $x, [$($u)* &], [$($s)*], $($xs)*)
+   };
+   (@start2 $x:expr, [$($u:tt)*], [$($s:tt)*], * $($xs:tt)*) => {
+      $crate::pipe!(@start2 $x, [$($u)* *], [$($s)*], $($xs)*)
+   };
+   (@start2 $x:expr, [$($u:tt)*], [$($s:tt)*], await $($xs:tt)*) => {
+      $crate::pipe!(@start2 $x, [$($u)*], [$($s)*.await], $($xs)*)
+   };
+   (@start2 $x:expr, [$($u:tt)*], [$($s:tt)*], ? $($xs:tt)*) => {
+      $crate::pipe!(@start2 $x, [$($u)*], [$($s)*?], $($xs)*)
+   };
+   (@start2 $x:expr, [$($u:tt)*], [$($s:tt)*], -> $($xs:tt)+) => {{
+      #[allow(unused_mut)]
+      let mut x = $x;
+      $crate::pipe!(@start ($($u)*x.0$($s)*, $($u)*x.1$($s)*), [], $($xs)+)
+   }};
+   (@start2 $x:expr, [$($u:tt)*], [$($s:tt)*], => $($xs:tt)+) => {{
+      #[allow(unused_mut)]
+      let mut x = $x;
+      $crate::pipe!(@start2 ($($u)*x.0$($s)*, $($u)*x.1$($s)*), [], [], $($xs)+)
+   }};
+   (@start2 $x:expr, [$($u:tt)*], [$($s:tt)*], match $c:tt $($xs:tt)*) => {{
+      #[allow(unused_mut)]
+      let mut x = $x;
+      $crate::pipe!(@finish match ($($u)*x.0$($s)*, $($u)*x.1$($s)*) $c, $($xs)*)
+   }};
+   (@start2 $x:expr, [$($u:tt)*], [$($s:tt)*], $y:tt.$f:ident $($xs:tt)*) => {{
+      #[allow(unused_mut)]
+      let mut x = $x;
+      $crate::pipe!(@method $y, [$f](), [$($u)*x.0$($s)*, $($u)*x.1$($s)*], $($xs)*)
+   }};
+   (@start2 $x:expr, [$($u:tt)*], [$($s:tt)*], $f:ident $($xs:tt)*) => {{
+      #[allow(unused_mut)]
+      let mut x = $x;
+      $crate::pipe!(@call ($($u)*x.0$($s)*, $($u)*x.1$($s)*), [$f], $($xs)*)
+   }};
+   (
+      @start2 $x:expr,
+      [$($u:tt)*],
+      [$($s:tt)*],
+      |$y:pat_param, $z:pat_param| $e:block -> $($xs:tt)*) =>
+   {{
+      #[allow(unused_mut)]
+      let mut x = $x;
+      $crate::pipe!(@start (|$y, $z| $e)($($u)*x.0$($s)*, $($u)*x.1$($s)*), [], $($xs)*)
+   }};
+   (
+      @start2 $x:expr,
+      [$($u:tt)*],
+      [$($s:tt)*],
+      |$y:pat_param, $z:pat_param| $e:block => $($xs:tt)*) =>
+   {{
+      #[allow(unused_mut)]
+      let mut x = $x;
+      $crate::pipe!(@start2 (|$y, $z| $e)($($u)*x.0$($s)*, $($u)*x.1$($s)*), [], [], $($xs)*)
+   }};
+   (@start2 $x:expr, [$($u:tt)*], [$($s:tt)*], |$y:pat_param, $z:pat_param| $e:block) => {{
+      #[allow(unused_mut)]
+      let mut x = $x;
+      (|$y, $z| $e)($($u)*x.0$($s)*, $($u)*x.1$($s)*)
+   }};
+   (@start2 $x:expr, [$($u:tt)*], [$($s:tt)*],) => {{
+      #[allow(unused_mut)]
+      let mut x = $x;
+      ($($u)*x.0$($s)*, $($u)*x.1$($s)*)
+   }};
    (@init [$($x:tt)+], -> $($xs:tt)+) => {
       $crate::pipe!(@start $($x)+, [], $($xs)+)
+   };
+   (@init [$($x:tt)+], => $($xs:tt)+) => {
+      $crate::pipe!(@start2 $($x)+, [], [], $($xs)+)
    };
    (@init [$($x:tt)+], $x1:tt $($xs:tt)*) => {
       $crate::pipe!(@init [$($x)+$x1], $($xs)*)
@@ -134,13 +227,17 @@ mod tests {
       pub fn wrap<T>(x: T) -> Option<T> {
          Some(x)
       }
+
+      pub fn wrap2<T>(x: T, y: T) -> (Option<T>, Option<T>) {
+         (Some(x), Some(y))
+      }
    }
 
    use bar::*;
    use foo::*;
 
    #[test]
-   fn test_ref() {
+   fn r#ref() {
       assert_eq!(&0, pipe!(0 -> & -> ident));
       assert_eq!(&0, pipe!(0 -> &ident));
       assert_eq!(&mut 0, pipe!(0 -> &mut -> foo::ident));
@@ -149,16 +246,31 @@ mod tests {
       assert_eq!(0, pipe!(0 -> &&second(&&1) -> **));
       assert_eq!(0, pipe!(0 -> &mut -> foo::third(&mut 1, &mut 2) -> *));
       assert_eq!(0, pipe!(0 -> &mut foo::third(&mut 1)(&mut 2) -> *));
+
+      assert_eq!(1, pipe!((0, 1) => & => second -> *));
+      assert_eq!(1, pipe!((0, 1) => &second -> *));
+      assert_eq!(1, pipe!((0, 1) => &mut  => second -> *));
+      assert_eq!(1, pipe!((0, 1) => &mut second -> *));
+      assert_eq!(1, pipe!((0, 1) => && => second -> **));
+      assert_eq!(1, pipe!((0, 1) => &&second -> **));
+      assert_eq!(1, pipe!((0, 1) => &third(&2) -> *));
    }
 
    #[test]
-   fn test_try() {
+   fn r#try() {
       fn inner() -> Option<()> {
          assert_eq!(0, pipe!(Some(0) -> ? -> ident));
          assert_eq!(0, pipe!(Some(0) -> ?foo::ident));
          assert_eq!(0, pipe!(0 -> wrap -> ?));
          assert_eq!(0, pipe!(0 -> wrap? -> ident::<_>));
+         assert_eq!(0, pipe!(Some(0) -> bar::wrap -> ? -> ?));
+         assert_eq!(0, pipe!(Some(0) -> bar::wrap -> ??));
          assert_eq!(0, pipe!(Some(0) -> bar::wrap? -> ?));
+         assert_eq!(0, pipe!(Some(0) -> bar::wrap??));
+         assert_eq!((0, 1), pipe!((0, 1) => wrap2 => ?));
+         assert_eq!((0, 1), pipe!((0, 1) => bar::wrap2 => ?));
+         assert_eq!((0, 1), pipe!((Some(0), Some(1)) => ?wrap2 => ?));
+         assert_eq!((0, 1), pipe!((Some(0), Some(1)) => ?bar::wrap2 => ?));
          pipe!(None::<()> -> bar::wrap??);
          unreachable!();
       }
@@ -166,7 +278,7 @@ mod tests {
    }
 
    #[test]
-   fn test_method() {
+   fn method() {
       #[derive(Debug, PartialEq, Eq)]
       struct U32(u32);
 
@@ -181,6 +293,10 @@ mod tests {
 
          fn add3(&mut self, b: u32, c: u32) -> U32 {
             U32(self.0 + b + c)
+         }
+
+         fn add4(&mut self, b: u32, c: u32, d: u32) -> U32 {
+            U32(self.0 + b + c + d)
          }
 
          fn add_assign(&mut self, b: u32) -> U32 {
@@ -202,10 +318,12 @@ mod tests {
       assert_eq!(U32(5), pipe!(5 -> x.add_assign));
       assert_eq!(U32(6), pipe!(0 -> x.add3(1)));
       assert_eq!(U32(7), pipe!(U32(0) -> .konst::<_>(U32(7))));
+      assert_eq!(U32(8), pipe!((1, 2) => x.add3));
+      assert_eq!(U32(9), pipe!((0, 1) => x.add4(3)));
    }
 
    #[test]
-   fn test_index() {
+   fn index() {
       let xs = [0, 1, 2];
       assert_eq!(0, pipe!(xs -> [0]));
       assert_eq!(1, pipe!(&xs -> [1]));
@@ -214,7 +332,7 @@ mod tests {
    }
 
    #[test]
-   fn test_access() {
+   fn access() {
       struct Foo(u32, u32);
 
       struct Bar {
@@ -235,7 +353,12 @@ mod tests {
    }
 
    #[test]
-   fn test_match() {
+   fn sink() {
+      assert_eq!((), pipe!(0 -> _));
+   }
+
+   #[test]
+   fn r#match() {
       assert_eq!(0, pipe!(false -> match { false => 0, true => 1}));
       assert_eq!(
          1,
@@ -243,10 +366,11 @@ mod tests {
             -> match { false => true, true => false}
             -> *&match { false => 0, true => 1}),
       );
+      assert_eq!((1, 2), pipe!((0, 1) => &match { (x, y) => (*x + 1, *y + 1) }));
    }
 
    #[test]
-   fn test_if() {
+   fn r#if() {
       assert_eq!(0, pipe!(false -> if { 1 } else { 0 }));
       assert_eq!(
          1,
@@ -257,7 +381,7 @@ mod tests {
    }
 
    #[test]
-   fn test_closure() {
+   fn closure() {
       assert_eq!(1, pipe!(0 -> |x| { x + 1 }));
       assert_eq!(
          2,
@@ -275,10 +399,11 @@ mod tests {
             }
             -> |x| { x + 1 }),
       );
+      assert_eq!(4, pipe!((0, 1) -> |(x, y)| { (x + 1, y + 1) } => |x, y| { x + y + 1 }));
    }
 
    #[test]
-   fn test_combo() {
+   fn combo() {
       struct Foo(Option<u32>);
 
       impl Foo {
@@ -293,5 +418,10 @@ mod tests {
          Some(())
       }
       inner();
+   }
+
+   #[test]
+   fn pointless() {
+      assert_eq!(0, pipe!(0 -> pipe! -> pipe!));
    }
 }

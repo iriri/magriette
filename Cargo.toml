@@ -1,11 +1,9 @@
 [package]
 name = "magriette"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["iriri"]
 edition = "2021"
 
 repository = "https://github.com/iriri/magriette"
 license = "BSD-3-Clause"
-description = "This is not a pipe."
-
-[dependencies]
+description = "This is not a pipe"
