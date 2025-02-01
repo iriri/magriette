@@ -30,6 +30,9 @@ macro_rules! pipe {
    (@finish $x:expr,) => {
       $x
    };
+   (@call ($($x:expr),+), [$($f:tt)+], .$f1:ident $($xs:tt)*) => {
+      $crate::pipe!(@call ($($x),+), [$($f)+.$f1], $($xs)*)
+   };
    (@call ($($x:expr),+), [$($f:tt)+], ::$f1:ident $($xs:tt)*) => {
       $crate::pipe!(@call ($($x),+), [$($f)+::$f1], $($xs)*)
    };
@@ -83,9 +86,6 @@ macro_rules! pipe {
    };
    (@start $x:expr, [$($u:tt)*], if $t:block else $f:block $($xs:tt)*) => {
       $crate::pipe!(@finish if $($u)*($x) $t else $f, $($xs)*)
-   };
-   (@start $x:expr, [$($u:tt)*], $y:tt.$f:ident $($xs:tt)*) => {
-      $crate::pipe!(@method $y, [$f](), [$($u)*($x)], $($xs)*)
    };
    (@start $x:expr, [$($u:tt)*], $f:ident $($xs:tt)*) => {
       $crate::pipe!(@call ($($u)*($x)), [$f], $($xs)*)
@@ -146,11 +146,6 @@ macro_rules! pipe {
       #[allow(unused_mut)]
       let mut x = $x;
       $crate::pipe!(@finish match ($($u)*x.0$($s)*, $($u)*x.1$($s)*) $c, $($xs)*)
-   }};
-   (@start2 $x:expr, [$($u:tt)*], [$($s:tt)*], $y:tt.$f:ident $($xs:tt)*) => {{
-      #[allow(unused_mut)]
-      let mut x = $x;
-      $crate::pipe!(@method $y, [$f](), [$($u)*x.0$($s)*, $($u)*x.1$($s)*], $($xs)*)
    }};
    (@start2 $x:expr, [$($u:tt)*], [$($s:tt)*], $f:ident $($xs:tt)*) => {{
       #[allow(unused_mut)]

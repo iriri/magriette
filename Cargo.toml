@@ -1,6 +1,6 @@
 [package]
 name = "magriette"
-version = "0.2.3"
+version = "0.2.4"
 authors = ["iriri"]
 edition = "2021"
 
