@@ -30,6 +30,9 @@ macro_rules! pipe {
    (@finish $x:expr,) => {
       $x
    };
+   (@call ($($x:expr),+), [$($f:tt)+], .await $($xs:tt)*) => {
+      $crate::pipe!(@finish $($f)+($($x),+).await, $($xs)*)
+   };
    (@call ($($x:expr),+), [$($f:tt)+], .$f1:ident $($xs:tt)*) => {
       $crate::pipe!(@call ($($x),+), [$($f)+.$f1], $($xs)*)
    };
