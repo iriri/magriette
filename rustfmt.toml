@@ -1,2 +1,0 @@
-use_small_heuristics = "Max"
-overflow_delimited_expr = true
