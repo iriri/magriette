@@ -19,7 +19,7 @@ macro_rules! pipe {
       $crate::pipe!(@start $x, [], $($xs)+)
    };
    (@finish $x:expr, => $($xs:tt)+) => {
-      $crate::pipe!(@start2 $x, [], [], $($xs)+)
+      $crate::pipe!(@start2 $x, [], $($xs)+)
    };
    (@finish $x:expr,) => {
       $x
@@ -40,7 +40,7 @@ macro_rules! pipe {
       $crate::pipe!(@start $($f)+($($x),+), [], $($xs)+)
    };
    (@call ($($x:expr),+), [$($f:tt)+], => $($xs:tt)*) => {
-      $crate::pipe!(@start2 $($f)+($($x),+), [], [], $($xs)+)
+      $crate::pipe!(@start2 $($f)+($($x),+), [], $($xs)+)
    };
    (@call ($($x:expr),+), [$($f:tt)+],) => {
       $($f)+($($x),+)
@@ -48,19 +48,14 @@ macro_rules! pipe {
    (@call ($($x:expr),+), [$($f:tt)+], $y:tt $($xs:tt)*) => {
       $crate::pipe!(@call ($($x),+), [$($f)+$y], $($xs)*)
    };
-   (@method $x:expr, [$($f:tt)+]($($y:expr),*), [$($z:expr),*], ::<$($t:ty),+$(,)?> $($xs:tt)*) => {
-      $crate::pipe!(@method $x, [$($f)+::<$($t),+>]($($y,)*), [$($z),*], $($xs)*)
+   (@method $x:expr, [$($f:tt)+]($($y:expr),*), ::<$($t:ty),+$(,)?> $($xs:tt)*) => {
+      $crate::pipe!(@method $x, [$($f)+::<$($t),+>]($($y,)*), $($xs)*)
    };
-   (
-      @method $x:expr,
-      [$($f:tt)+]($($y:expr),*),
-      [$($z:expr),*],
-      ($($zz:expr),+$(,)?) $($xs:tt)*) =>
-   {
-      $crate::pipe!(@method $x, [$($f)+]($($y,)* $($zz),+), [$($z),*], $($xs)*)
+   (@method $x:expr, [$($f:tt)+]($($y:expr),*), ($($z:expr),+$(,)?) $($xs:tt)*) => {
+      $crate::pipe!(@method $x, [$($f)+]($($y,)* $($z),+), $($xs)*)
    };
-   (@method $x:expr, [$($f:tt)+]($($y:expr),*), [$($z:expr),*], $($xs:tt)*) => {
-      $crate::pipe!(@finish ($x).$($f)+($($y,)*$($z),*), $($xs)*)
+   (@method $x:expr, [$($f:tt)+]($($y:expr),*), $($xs:tt)*) => {
+      $crate::pipe!(@finish ($x).$($f)+($($y,)*), $($xs)*)
    };
    (@start $x:expr, [$($u:tt)*], &mut $($xs:tt)*) => {
       $crate::pipe!(@start $x, [$($u)* &mut], $($xs)*)
@@ -75,28 +70,43 @@ macro_rules! pipe {
       $crate::pipe!(@start $x, [$($u)* *], $($xs)*)
    };
    (@start $x:expr, [$($u:tt)*], await $($xs:tt)*) => {
-      $crate::pipe!(@start ($x).await, [$($u)*], $($xs)*)
+      $crate::pipe!(@start ($($u)*($x)).await, [], $($xs)*)
    };
    (@start $x:expr, [$($u:tt)*], ? $($xs:tt)*) => {
-      $crate::pipe!(@start ($x)?, [$($u)*], $($xs)*)
+      $crate::pipe!(@start ($($u)*($x))?, [], $($xs)*)
    };
    (@start $x:expr, [$($u:tt)*], -> $($xs:tt)+) => {
       $crate::pipe!(@start $($u)*($x), [], $($xs)+)
    };
    (@start $x:expr, [$($u:tt)*], => $($xs:tt)+) => {
-      $crate::pipe!(@start2 $($u)*($x), [], [], $($xs)+)
+      $crate::pipe!(@start2 $($u)*($x), [], $($xs)+)
    };
    (@start $x:expr, [$($u:tt)*], match $c:tt $($xs:tt)*) => {
       $crate::pipe!(@finish match $($u)*($x) $c, $($xs)*)
    };
+   (@start $x:expr, [$($u:tt)*], if let $p:pat = $t:block else $f:block $($xs:tt)*) => {
+      $crate::pipe!(@finish if let $p = $($u)*($x) $t else $f, $($xs)*)
+   };
+   (@start $x:expr, [$($u:tt)*], if let $p:pat = $t:block $($xs:tt)*) => {
+      $crate::pipe!(@finish if let $p = $($u)*($x) $t, $($xs)*)
+   };
    (@start $x:expr, [$($u:tt)*], if $t:block else $f:block $($xs:tt)*) => {
       $crate::pipe!(@finish if $($u)*($x) $t else $f, $($xs)*)
+   };
+   (@start $x:expr, [$($u:tt)*], if $t:block $($xs:tt)*) => {
+      $crate::pipe!(@finish if $($u)*($x) $t, $($xs)*)
    };
    (@start $x:expr, [$($u:tt)*], $f:ident $($xs:tt)*) => {
       $crate::pipe!(@call ($($u)*($x)), [$f], $($xs)*)
    };
+   (@start $x:expr, [$($u:tt)*], :: $($xs:tt)*) => {
+      $crate::pipe!(@call ($($u)*($x)), [::], $($xs)*)
+   };
+   (@start $x:expr, [$($u:tt)*], < $($xs:tt)*) => {
+      $crate::pipe!(@call ($($u)*($x)), [<], $($xs)*)
+   };
    (@start $x:expr, [$($u:tt)*], .$f:ident $($xs:tt)*) => {
-      $crate::pipe!(@method $($u)*($x), [$f](), [], $($xs)*)
+      $crate::pipe!(@method $($u)*($x), [$f](), $($xs)*)
    };
    (@start $x:expr, [$($u:tt)*], [.$($p:tt)+] $($xs:tt)*) => {
       $crate::pipe!(@finish ($($u)*($x)).$($p)+, $($xs)*)
@@ -113,64 +123,103 @@ macro_rules! pipe {
    (@start $x:expr, [$($u:tt)*],) => {
       $($u)*($x)
    };
-   (@start2 $x:expr, [$($u:tt)*], [$($s:tt)*], &mut $($xs:tt)*) => {
-      $crate::pipe!(@start2 $x, [$($u)* &mut], [$($s)*], $($xs)*)
+   (@flush2 $e:expr, &mut $($s:tt)*) => {
+      $crate::pipe!(@flush2 &mut $e, $($s)*)
    };
-   (@start2 $x:expr, [$($u:tt)*], [$($s:tt)*], && $($xs:tt)*) => {
-      $crate::pipe!(@start2 $x, [$($u)* &&], [$($s)*], $($xs)*)
+   (@flush2 $e:expr, && $($s:tt)*) => {
+      $crate::pipe!(@flush2 &&$e, $($s)*)
    };
-   (@start2 $x:expr, [$($u:tt)*], [$($s:tt)*], & $($xs:tt)*) => {
-      $crate::pipe!(@start2 $x, [$($u)* &], [$($s)*], $($xs)*)
+   (@flush2 $e:expr, & $($s:tt)*) => {
+      $crate::pipe!(@flush2 &$e, $($s)*)
    };
-   (@start2 $x:expr, [$($u:tt)*], [$($s:tt)*], * $($xs:tt)*) => {
-      $crate::pipe!(@start2 $x, [$($u)* *], [$($s)*], $($xs)*)
+   (@flush2 $e:expr, * $($s:tt)*) => {
+      $crate::pipe!(@flush2 *$e, $($s)*)
    };
-   (@start2 $x:expr, [$($u:tt)*], [$($s:tt)*], await $($xs:tt)*) => {
-      $crate::pipe!(@start2 $x, [$($u)*], [$($s)*.await], $($xs)*)
+   (@flush2 $e:expr, await $($s:tt)*) => {
+      $crate::pipe!(@flush2 $e.await, $($s)*)
    };
-   (@start2 $x:expr, [$($u:tt)*], [$($s:tt)*], ? $($xs:tt)*) => {
-      $crate::pipe!(@start2 $x, [$($u)*], [$($s)*?], $($xs)*)
+   (@flush2 $e:expr, ? $($s:tt)*) => {
+      $crate::pipe!(@flush2 $e?, $($s)*)
    };
-   (@start2 $x:expr, [$($u:tt)*], [$($s:tt)*], -> $($xs:tt)+) => {{
+   (@flush2 $e:expr,) => {
+      $e
+   };
+   (@start2 $x:expr, [$($s:tt)*], &mut $($xs:tt)*) => {
+      $crate::pipe!(@start2 $x, [$($s)* &mut], $($xs)*)
+   };
+   (@start2 $x:expr, [$($s:tt)*], && $($xs:tt)*) => {
+      $crate::pipe!(@start2 $x, [$($s)* &&], $($xs)*)
+   };
+   (@start2 $x:expr, [$($s:tt)*], & $($xs:tt)*) => {
+      $crate::pipe!(@start2 $x, [$($s)* &], $($xs)*)
+   };
+   (@start2 $x:expr, [$($s:tt)*], * $($xs:tt)*) => {
+      $crate::pipe!(@start2 $x, [$($s)* *], $($xs)*)
+   };
+   (@start2 $x:expr, [$($s:tt)*], await $($xs:tt)*) => {
+      $crate::pipe!(@start2 $x, [$($s)* await], $($xs)*)
+   };
+   (@start2 $x:expr, [$($s:tt)*], ? $($xs:tt)*) => {
+      $crate::pipe!(@start2 $x, [$($s)* ?], $($xs)*)
+   };
+   (@start2 $x:expr, [$($s:tt)*], -> $($xs:tt)+) => {{
       #[allow(unused_mut)]
       let mut x = $x;
-      $crate::pipe!(@start ($($u)*x.0$($s)*, $($u)*x.1$($s)*), [], $($xs)+)
+      $crate::pipe!(
+         @start ($crate::pipe!(@flush2 x.0, $($s)*), $crate::pipe!(@flush2 x.1, $($s)*)),
+         [],
+         $($xs)+
+      )
    }};
-   (@start2 $x:expr, [$($u:tt)*], [$($s:tt)*], => $($xs:tt)+) => {{
+   (@start2 $x:expr, [$($s:tt)*], => $($xs:tt)+) => {{
       #[allow(unused_mut)]
       let mut x = $x;
-      $crate::pipe!(@start2 ($($u)*x.0$($s)*, $($u)*x.1$($s)*), [], [], $($xs)+)
+      $crate::pipe!(
+         @start2 ($crate::pipe!(@flush2 x.0, $($s)*), $crate::pipe!(@flush2 x.1, $($s)*)),
+         [],
+         $($xs)+
+      )
    }};
-   (@start2 $x:expr, [$($u:tt)*], [$($s:tt)*], match $c:tt $($xs:tt)*) => {{
+   (@start2 $x:expr, [$($s:tt)*], match $c:tt $($xs:tt)*) => {{
       #[allow(unused_mut)]
       let mut x = $x;
-      $crate::pipe!(@finish match ($($u)*x.0$($s)*, $($u)*x.1$($s)*) $c, $($xs)*)
+      $crate::pipe!(
+         @finish match ($crate::pipe!(@flush2 x.0, $($s)*), $crate::pipe!(@flush2 x.1, $($s)*)) $c,
+         $($xs)*
+      )
    }};
-   (@start2 $x:expr, [$($u:tt)*], [$($s:tt)*], $f:ident $($xs:tt)*) => {{
+   (@start2 $x:expr, [$($s:tt)*], $f:ident $($xs:tt)*) => {{
       #[allow(unused_mut)]
       let mut x = $x;
-      $crate::pipe!(@call ($($u)*x.0$($s)*, $($u)*x.1$($s)*), [$f], $($xs)*)
+      $crate::pipe!(
+         @call ($crate::pipe!(@flush2 x.0, $($s)*), $crate::pipe!(@flush2 x.1, $($s)*)),
+         [$f],
+         $($xs)*
+      )
    }};
    (
       @start2 $x:expr,
-      [$($u:tt)*],
       [$($s:tt)*],
       |$y:pat_param, $z:pat_param| $e:block $($xs:tt)*) =>
    {{
       #[allow(unused_mut)]
       let mut x = $x;
-      $crate::pipe!(@finish (|$y, $z| $e)($($u)*x.0$($s)*, $($u)*x.1$($s)*), $($xs)*)
+      $crate::pipe!(
+         @finish
+            (|$y, $z| $e)($crate::pipe!(@flush2 x.0, $($s)*), $crate::pipe!(@flush2 x.1, $($s)*)),
+         $($xs)*
+      )
    }};
-   (@start2 $x:expr, [$($u:tt)*], [$($s:tt)*],) => {{
+   (@start2 $x:expr, [$($s:tt)*],) => {{
       #[allow(unused_mut)]
       let mut x = $x;
-      ($($u)*x.0$($s)*, $($u)*x.1$($s)*)
+      ($crate::pipe!(@flush2 x.0, $($s)*), $crate::pipe!(@flush2 x.1, $($s)*))
    }};
    (@init [$($x:tt)+], -> $($xs:tt)+) => {
       $crate::pipe!(@start $($x)+, [], $($xs)+)
    };
    (@init [$($x:tt)+], => $($xs:tt)+) => {
-      $crate::pipe!(@start2 $($x)+, [], [], $($xs)+)
+      $crate::pipe!(@start2 $($x)+, [], $($xs)+)
    };
    (@init [$($x:tt)+], $x1:tt $($xs:tt)*) => {
       $crate::pipe!(@init [$($x)+$x1], $($xs)*)
@@ -187,7 +236,7 @@ macro_rules! pipe {
 }
 
 #[cfg(test)]
-mod tests {
+mod test {
    mod foo {
       pub fn ident<T>(x: T) -> T {
          x
@@ -248,6 +297,48 @@ mod tests {
          assert_eq!((0, 1), pipe!((Some(0), Some(1)) => ?wrap2 => ?));
          assert_eq!((0, 1), pipe!((Some(0), Some(1)) => ?bar::wrap2 => ?));
          pipe!(None::<()> -> bar::wrap -> ??);
+         unreachable!();
+      }
+      inner();
+   }
+
+   #[test]
+   fn order() {
+      trait Maybe {
+         fn maybe(self) -> Option<()>;
+      }
+
+      impl Maybe for Option<u32> {
+         fn maybe(self) -> Option<()> {
+            Some(())
+         }
+      }
+
+      impl Maybe for &Option<u32> {
+         fn maybe(self) -> Option<()> {
+            None
+         }
+      }
+
+      impl Maybe for (Option<u32>, Option<u32>) {
+         fn maybe(self) -> Option<()> {
+            Some(())
+         }
+      }
+
+      impl Maybe for (&Option<u32>, &Option<u32>) {
+         fn maybe(self) -> Option<()> {
+            None
+         }
+      }
+
+      fn inner() -> Option<()> {
+         fn inner() -> Option<()> {
+            pipe!(&Some(Some(0)) -> *?&.maybe -> ?);
+            unreachable!();
+         }
+         inner();
+         pipe!((&Some(Some(0)), &Some(Some(0))) => *?& -> .maybe -> ?);
          unreachable!();
       }
       inner();
@@ -354,6 +445,26 @@ mod tests {
             -> if { false } else { true }
             -> *&if { 1 } else { 0 }),
       );
+      assert_eq!((), pipe!(true -> if {}));
+      assert_eq!(1, pipe!(Some(1) -> if let Some(x) = { x } else { 0 }));
+      assert_eq!(0, pipe!(None::<u32> -> if let Some(x) = { x } else { 0 }));
+      assert_eq!((), pipe!(Some(1) -> if let Some(_) = {}));
+   }
+
+   #[test]
+   fn leading() {
+      trait Identity {
+         fn identity(self) -> u32;
+      }
+
+      impl Identity for u32 {
+         fn identity(self) -> u32 {
+            self
+         }
+      }
+
+      assert_eq!(0, pipe!(0 -> ::core::convert::identity));
+      assert_eq!(1, pipe!(1 -> <u32 as Identity>::identity));
    }
 
    #[test]
@@ -398,7 +509,7 @@ mod tests {
 
       fn inner() -> Option<()> {
          assert_eq!(0, pipe!(Some(0) -> *&?bar::wrap -> ?));
-         assert_eq!(0, pipe!(Some(Some(Foo(Some(0)))) -> ?&&&*&&&*&?.wrap -> ??));
+         assert_eq!(0, pipe!(Some(Some(Foo(Some(0)))) -> ??&&&*&&&*&.wrap -> ??));
          assert_eq!(1, pipe!(Some(0) -> ?Foo::new(Some(1)).wrap_add -> ??));
          Some(())
       }
